@@ -1,0 +1,927 @@
+# **************************************************************#
+# CDT Social Analytics and Visualisation (SMI610)
+# June 2020
+#
+# Instructor: Paul Clough
+#
+#
+# Machine Learning in R
+#
+# University of Sheffield and Peak Indicators
+#
+# Examples from http://handsondatascience.com/ and 
+# http://onepager.togaware.com/TextMiningO.pdf
+# **************************************************************#
+
+# **************************************************************#
+# Part 1: Regression Analysis
+# Useful reference:
+# http://r-statistics.co/Assumptions-of-Linear-Regression.html
+# **************************************************************#
+
+# Remember to set your working directory at start of tutorial
+
+#################################################################
+# Simple linear regression - initial example
+#################################################################
+
+# Introduction to lm() function 
+#install.packages("tidyverse")
+library(tidyverse)
+#install.packages("ggExtra")
+library(ggExtra)
+
+url <- "https://raw.githubusercontent.com/rmcelreath/rethinking/master/data/Howell1.csv"
+howell1 <- read.csv(url, sep = ";")
+# howell1 <- read.csv("Data/Howell1.csv", sep=';')
+
+# ----- Getting familiar with the dataset -----
+
+# Check structure of the dataset
+str(howell1)
+
+# Look at the data
+View(howell1)
+head(howell1)
+
+# Check for missing values
+sapply(howell1, function(y) sum(length(which(is.na(y)))))
+
+# tidyverse alternative
+count_na <- function(x){
+  sum(is.na(x))
+}
+
+howell1 %>% map_int(count_na)
+
+# Check class of each variable
+howell1 %>% map_chr(class)
+
+# Descriptive summary
+summary(howell1)
+
+# Quick visual inspection of the data
+install.packages("GGally")
+library(GGally)
+
+ggpairs(howell1)
+
+cor.test(howell1$weight, howell1$height)
+
+# ----- Exploratory analysis with DataExplorer  -----
+
+install.packages("DataExplorer")
+library(DataExplorer)
+
+# Plot a summary of variable types etc. in graphical form
+plot_intro(howell1)
+
+# Check for missing values
+plot_missing(howell1, ggtheme = theme_minimal(base_size = 10))
+
+# Check for correlations
+plot_correlation(howell1, type = 'all', cor_args = list(method = "spearman", 
+                                                    use = "pairwise.complete.obs"), ggtheme = theme_minimal(base_size = 6), na.omit(TRUE))
+
+# plot numeric variables as density plot
+plot_density(howell1, ggtheme = theme_minimal(base_size = 10))
+
+plot_bar(howell1[,-5], ggtheme = theme_minimal(base_size = 12))
+
+# Plot any categorical data by target variable
+howell1$malecat <- as.factor(howell1$male)
+plot_boxplot(howell1, by = "malecat")
+
+# tidyverse alternative to the above
+howell1 %>%
+  mutate(malecat = as.factor(male)) %>%
+  plot_boxplot(by = "malecat")
+
+# ----- First linear regression -----
+
+# Scatterplot of height versus weight with regression line added
+p <- howell1 %>%
+  ggplot(aes(x = height, y = weight)) +
+  geom_point(aes(color=age), size = 2, alpha = 0.8) +
+  geom_smooth(method = "lm", colour = "black") +
+  theme_bw(base_size = 12)
+ggMarginal(p, type = "histogram")
+
+lm.model <- lm(weight ~ height, data = howell1)
+summary(lm.model)
+
+# Another way of drawing the regression line with our model
+ggplot(data = howell1, aes(x = height, y = weight)) + 
+  geom_point() +
+  geom_abline(mapping=aes(slope=lm.model$coefficients[2], intercept=lm.model$coefficients[1]), color='red')
+
+
+#install.packages("broom")
+library(broom)
+lm.model.metrics <- augment(lm.model)
+
+ggplot(lm.model.metrics, aes(x = height, y = weight)) +
+  geom_point() +
+  stat_smooth(method = lm, se = FALSE) +
+  geom_segment(aes(xend = height, yend = .fitted), color = "red", size = 0.3)
+
+plot(lm.model, which=1)
+
+dev.off() 
+layout(matrix(1:6, ncol=2, byrow=TRUE))
+plot(lm.model, 1:6)
+par(mfrow=c(1,1))
+
+# Make some predictions with new data points
+new <- data.frame(height=c(120, 170))
+predict(lm.model, newdata=new)
+
+predict(lm.model, newdata=new, interval="confidence")
+predict(lm.model, newdata=new, interval="prediction")
+
+shapiro.test(howell1$weight)
+shapiro.test(howell1$height)
+
+glance(lm.model)
+
+# Exercise - prediction with the faithful dataset - how is dataset represented?
+# Create plot of attributes of the data to identify possible relationships between 
+# variables. Try to predict number of eruptions. How accurate is the model?
+# http://www.r-tutor.com/elementary-statistics/simple-linear-regression/prediction-interval-linear-regression
+
+# data("faithful")
+# str(faithful)
+# summary(faithful)
+# faithfulModel<-lm(formula=eruptions~waiting, data=faithful)
+# predict(faithfulModel, newdata=data.frame(waiting=c(80)), interval='confidence')
+
+
+#################################################################
+# Multiple linear regression
+#################################################################
+
+# Need to remove the category created earlier otherwise the vif() function complains
+howell1 <- howell1 %>% select(-malecat)
+
+lm.model.2 <- lm(weight ~ age+height+male, data = howell1)
+summary(lm.model.2)
+
+# Same as above - include all variables into the model
+lm.model.2 <- lm(weight ~., data = howell1)
+
+# Make some predictions with new data points
+new <- data.frame(height=c(150, 130), age=c(20, 70), male=c(1, 0))
+predict(lm.model.2, newdata=new)
+
+plot(lm.model.2, which=1)
+
+glance(lm.model.2)
+
+# Produce correlation plot with DataExplorer
+#install.packages("DataExplorer")
+#library(DataExplorer)
+plot_correlation(howell1, type = 'all', cor_args = list(method = "spearman", use = "pairwise.complete.obs"), ggtheme = theme_light(base_size =8), na.omit(TRUE))
+
+install.packages("car")
+library(car)
+car::vif(lm.model.2)
+
+lm.model.3 <- lm(weight ~ age+height+male+age*height, data = howell1)
+summary(lm.model.3)
+
+ggplot(data = howell1, aes(x = height, y = weight)) + 
+  geom_point() +
+  geom_abline(mapping=aes(slope=lm.model.3$coefficients[3], intercept=lm.model.3$coefficients[1]), color='red') +
+  geom_abline(mapping=aes(slope=lm.model$coefficients[2], intercept=lm.model$coefficients[1]), color='blue')
+
+
+#################################################################
+# Non-linear regression
+#################################################################
+
+# Plot the transformed weight vs. height
+p <- howell1 %>%
+  ggplot(aes(x = height, y = log(weight))) +
+  geom_point(aes(color=age), size = 2, alpha = 0.8) +
+  geom_smooth(method = "lm", colour = "black") +
+  theme_bw(base_size = 12)
+ggMarginal(p, type = "histogram")
+
+# By defalut log() uses natural logirithm base - e
+# Can still model using linear regression if we log the target variable
+lm.model.4 <- lm(log(weight) ~ age+height+male+age*height, data = howell1)
+summary(lm.model.4)
+
+# Compute error as inverse log 
+exp(0.1035)
+
+install.packages("mgcv")
+library(mgcv)
+
+# Build the model
+lm.model.5 <- gam(weight ~ s(age)+s(height), data = howell1)
+summary(lm.model.5)
+
+ggplot(howell1, aes(height, log(weight))) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+
+lm.model.6 <- gam(log(weight) ~ s(age)+s(height), data = howell1)
+
+
+#################################################################
+# Comparing models
+#################################################################
+
+install.packages("caret")
+library(caret)
+
+# Create the training and test sets
+set.seed(100)  # For reproducibility
+data <- howell1
+data.rows <- createDataPartition(data$male, p=0.8, list=FALSE)
+train.data <- data[data.rows, ]
+test.data <- data[-data.rows, ]
+
+#Check proportions of male and females in train/test data
+train.data %>% 
+  group_by(male) %>%
+  summarise(n=n()) %>% 
+  mutate(pct=100*n/sum(n))
+  
+test.data %>% 
+  group_by(male) %>%
+  summarise(n=n()) %>% 
+  mutate(pct=100*n/sum(n))
+
+
+# Train models on training data
+lm.model <- lm(weight ~ height, data = train.data)
+lm.model.2 <- lm(weight ~ age+height+male, data = train.data)
+lm.model.3 <- lm(weight ~ age+height+male+age*height, data = train.data)
+lm.model.4 <- lm(log(weight) ~ age+height+male+age*height, data = train.data)
+lm.model.5 <- gam(weight ~ s(age)+s(height), data = train.data)
+lm.model.6 <- gam(log(weight) ~ s(age)+s(height), data = train.data)
+
+# Predictions on test data
+lm.pred <- predict(lm.model, test.data)
+lm.pred.2 <- predict(lm.model.2, test.data)
+lm.pred.3 <- predict(lm.model.3, test.data) 
+lm.pred.4 <- predict(lm.model.4, test.data)
+lm.pred.5 <- predict(lm.model.5, test.data) 
+lm.pred.6 <- predict(lm.model.6, test.data)
+
+# Compute metrics
+
+# Create a summary stats function we'll apply for each model
+summary_stats <- function(predicted, actual) {
+  r_squared <- 1 - (sum((actual - predicted)^2) / sum((actual - mean(actual))^2))
+  rmse <- (mean((predicted - actual)^2))^0.5
+  return(c(r_squared, rmse))
+}
+
+summary_df <- data.frame(list(summary_stats(lm.pred, test.data$weight)))
+colnames(summary_df) = c('lm.pred')
+row.names(summary_df) <- c('R-Squared', 'RMSE')
+
+summary_df['lm.pred.2'] <- summary_stats(lm.pred.2, test.data$weight)
+summary_df['lm.pred.3'] <- summary_stats(lm.pred.3, test.data$weight)
+summary_df['lm.pred.4'] <- summary_stats(lm.pred.4, log(test.data$weight))
+summary_df['lm.pred.5'] <- summary_stats(lm.pred.5, test.data$weight)
+summary_df['lm.pred.6'] <- summary_stats(lm.pred.6, log(test.data$weight))
+
+summary_df
+
+
+#################################################################
+# Regularisation
+# See: http://www.sthda.com/english/articles/37-model-selection-essentials-in-r/153-penalized-regression-essentials-ridge-lasso-elastic-net/
+#################################################################
+
+install.packages("glmnet")
+library(glmnet)
+
+x <- model.matrix(weight~., train.data)[,-1] # Predictor variables
+y <- train.data$weight # Outcome variable
+
+# Simplified format: glmnet(x, y, alpha = 1, lambda = NULL)
+
+set.seed(123) 
+cv <- cv.glmnet(x, y, alpha = 0)
+
+# Display lambda values
+plot(cv)
+
+# Display the best lambda value
+cv$lambda.min
+
+# Fit the final model on the training data
+model <- glmnet(x, y, alpha = 0, lambda = cv$lambda.min)
+
+# Display regression coefficients
+coef(model)
+
+# Make predictions on the test data
+x.test <- model.matrix(weight ~., test.data)[,-1]
+predictions <- model %>% 
+  predict(x.test) %>% 
+  as.vector()
+
+data.frame(
+  RMSE = RMSE(predictions, test.data$weight),
+  Rsquare = R2(predictions, test.data$weight)
+)
+
+set.seed(123) 
+cv <- cv.glmnet(x, y, alpha = 1)
+model.2 <- glmnet(x, y, alpha = 1, lambda = cv$lambda.min)
+predictions <- model.2 %>% 
+  predict(x.test) %>% 
+  as.vector()
+
+data.frame(
+  RMSE = RMSE(predictions, test.data$weight),
+  Rsquare = R2(predictions, test.data$weight)
+)
+
+
+#################################################################
+# Regression with categorical variables
+# See: https://advstats.psychstat.org/book/mregression/catpredictor.php
+# https://rpubs.com/beane/n3_5
+#################################################################
+
+# Create category for gender
+howell1$gender <- factor(howell1$male, c(0,1), labels=c('Female', 'Male'))
+
+# tidyverse alternative 
+howell1 <- howell1 %>%
+  mutate(gender = fct_recode(as.factor(male),
+                             "Female" = "0",
+                             "Male" = "1"))
+
+# Create the training and test sets
+set.seed(100)  # For reproducibility
+data <- howell1
+data.rows <- createDataPartition(data$gender, p=0.8, list=FALSE)
+train.data <- data[data.rows, ]
+test.data <- data[-data.rows, ]
+
+# Build the model - lm automatically encodes categorical variables
+lm.model.7 <- lm(weight ~ height+age+gender, data = train.data)
+summary(lm.model.7)
+
+# Check how the dummy variable encoding has been done
+contrasts(howell1$gender)
+model.matrix(~howell1$gender)
+
+# Make predictions
+lm.pred.7 <- predict(lm.model.7, test.data)
+summary_stats(lm.pred.7, test.data$weight)
+
+# Another hot encoding example with multi-level categories
+mushroom.data <- read.csv("Data/mushrooms.csv", head=TRUE)
+mushroom.data <- mushroom.data[,-1]
+head(mushroom.data)
+str(mushroom.data)
+
+contrasts(mushroom.data$cap.shape)
+model.matrix(~mushroom.data$cap.shape)
+
+
+#################################################################
+# Logistic regression
+#################################################################
+
+# Start by using linear regression
+howell1 %>% 
+  mutate(x = round(height)) %>%
+  group_by(x) %>%
+  filter(n() >= 10) %>%
+  summarize(prop = mean(male == 1)) %>%
+  ggplot(aes(x, prop)) +
+  geom_point()
+
+# Inspect the features
+library(caret)
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+featurePlot(x=train.data[,-c(4,5)], y=factor(train.data[,4]), plot="box", scales=scales)
+
+install.packages("stats")
+library(stats)
+
+logit.model <- glm(male ~ height, family = binomial(link='logit'), data = train.data)
+
+# Predicting the Validation set results
+logit.pred <- predict(logit.model, type = 'response', newdata = test.data)
+
+logit.pred.classes = ifelse(logit.pred > 0.5, 1, 0)
+
+# Checking the prediction accuracy
+table(test.data$male, logit.pred > 0.5) # Confusion matrix
+# Alternative: table(test.data$male, logit.pred.classes) # Confusion matrix
+accuracy<- mean(test.data$male == logit.pred.classes) # Misclassification error
+paste('Accuracy',round(accuracy, 5))
+
+# Check ROC curve
+install.packages("pROC")
+library(pROC)
+logit.roc <- roc(test.data$male, logit.pred)
+
+plot.roc(logit.roc, legacy.axes = TRUE, print.auc=TRUE, 
+         print.auc.x = 0.35, 
+         print.thres="best")
+
+# Check with best threshold values
+logit.pred.classes = ifelse(logit.pred > 0.510, 1, 0)
+
+# Checking the prediction accuracy
+table(test.data$male, logit.pred > 0.510) 
+accuracy <- mean(test.data$male == logit.pred.classes) # Misclassification error
+paste('Accuracy',round(accuracy, 5))
+
+
+# **************************************************************#
+# Part 2: Machine Learning using other algorithms
+# 
+# https://rpubs.com/ezgi/classification
+# https://www.r-bloggers.com/random-forest-classification-of-mushrooms/
+
+# http://www.sthda.com/english/articles/36-classification-methods-essentials/
+# https://www.machinelearningplus.com/machine-learning/caret-package/
+# **************************************************************#
+
+#################################################################
+# Classification with the Pima dataset
+#################################################################
+
+install.packages("mlbench")
+
+library(mlbench)
+library(dplyr)
+
+# **************************************************************#
+# Start with initial analysis / exploration of the datasets to
+# look at how many variables, whether there are missing values etc.
+# **************************************************************#
+
+# Explaination of the dataset
+# https://www.rdocumentation.org/packages/mlbench/versions/2.1-1/topics/PimaIndiansDiabetes
+
+# Load the data
+data(PimaIndiansDiabetes2, package = "mlbench")
+
+# Simple methods to summarise/inspect datasets
+summary(PimaIndiansDiabetes2)
+glimpse(PimaIndiansDiabetes2) # dplyr function for summarising dataset
+
+# Probably all we need - great overview (check for categorical data)
+library(GGally)
+ggpairs(PimaIndiansDiabetes2, ggtheme = theme_light(base_size =6))
+
+# Another useful tool - Scatterplot Matrices from the lattice package 
+# pairs(formula=~., data=PimaIndiansDiabetes2, main="Diabetes")
+
+# Use Amelia package to show missing values and NAs
+# https://www.r-bloggers.com/ggplot-your-missing-data-2/
+
+install.packages("Amelia")
+library(Amelia)
+missmap(PimaIndiansDiabetes2)
+
+# We see some problems with the insulin and triceps variables
+# These are NAs
+head(PimaIndiansDiabetes2$insulin)
+
+# Can also explore the data values using the skimr package
+install.packages("skimr")
+library(skimr)
+skimmed <- skim_to_wide(PimaIndiansDiabetes2)
+View(skimmed)
+
+
+# **************************************************************#
+# Deal with missing values
+# **************************************************************#
+
+# Check for missing values
+anyNA(PimaIndiansDiabetes2)
+
+PimaIndiansDiabetes2 %>% map_int(count_na) 
+
+#sapply(PimaIndiansDiabetes2, function(y) sum(length(which(is.na(y)))))
+
+# Remove rows with missing values
+pima.filtered.data <- na.omit(PimaIndiansDiabetes2)
+anyNA(pima.filtered.data)
+head(pima.filtered.data)
+
+# Compare results - not good!
+print(table(PimaIndiansDiabetes2$diabetes))
+print(table(pima.filtered.data$diabetes))
+
+# Imputation using mean value
+x <- PimaIndiansDiabetes2$insulin
+head(x)
+
+x[is.na(x)] <- mean(x, na.rm=TRUE)
+head(x)
+
+# imputation using randomly selected value
+y <- PimaIndiansDiabetes2$insulin
+y[is.na(y)] <- sample(y[!is.na(y)], sum(is.na(y)), TRUE)
+head(y)
+
+# Impute missing values with ML
+install.packages("missForest")
+library(missForest)
+
+set.seed(100)
+
+x <- missForest(PimaIndiansDiabetes2)
+str(x)
+pima.filtered.data <- x$ximp
+head(pima.filtered.data)
+
+sapply(pima.filtered.data, function(y) sum(length(which(is.na(y)))))
+pima.filtered.data %>% map_int(count_na) 
+
+print(table(PimaIndiansDiabetes2$diabetes))
+print(table(pima.filtered.data$diabetes))
+
+# Example of using amelia() to impute missing values
+#  data.filtered <- amelia(PimaIndiansDiabetes2, noms="diabetes", m=3)
+#  head(data.filtered$imputations$imp3)
+
+# **************************************************************#
+# Transform/scale the values
+# **************************************************************#
+
+#install.packages("tidyverse")
+#library(tidyverse)
+
+x <- pima.filtered.data %>% 
+  dplyr::select(diabetes)
+
+str(x)
+str(pima.scaled.data)
+
+pima.scaled.data <- scale(pima.filtered.data[,-9]) # apply scaling to numeric values only
+head(pima.scaled.data)
+
+pima.scaled.data <- cbind(pima.scaled.data, x)
+head(pima.scaled.data)
+
+# tidyverse alternative to the above - they are equivalent
+to_scale <- pima.filtered.data %>% select(-diabetes) %>% names()
+pima.scaled.data.2 <- cbind(
+  scale(pima.filtered.data[to_scale]), # apply scaling to numeric values
+  pima.filtered.data %>% select(diabetes) # bind diabetes to data frame
+)
+
+# **************************************************************#
+# Set up the data - training and test sets
+# **************************************************************#
+
+#install.packages("caret")
+library(caret)
+
+set.seed(123)
+
+data <- pima.scaled.data$diabetes %>%
+  createDataPartition(p=0.8, list=FALSE)
+
+train.data <- pima.scaled.data[data, ]
+test.data <- pima.scaled.data[-data, ]
+
+summary(train.data)
+summary(test.data)
+print(table(train.data$diabetes))
+print(table(test.data$diabetes))
+
+
+# **************************************************************#
+# Using caret to perform classification 
+# **************************************************************#
+
+# define training control
+control <- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+
+# Run all classifiers on the training data
+set.seed(100)
+nb.model <- train(diabetes~., data=train.data, method="nb", metric=metric, trControl=control)
+set.seed(100)
+lda.model <- train(diabetes~., data=train.data, method="lda", metric=metric, trControl=control)
+set.seed(100)
+cart.model <- train(diabetes~., data=train.data, method="rpart", metric=metric, trControl=control)
+set.seed(100)
+knn.model <- train(diabetes~., data=train.data, method="knn", metric=metric, trControl=control)
+set.seed(100)
+svm.model <- train(diabetes~., data=train.data, method="svmRadial", metric=metric, trControl=control)
+set.seed(100)
+rf.model <- train(diabetes~., data=train.data, method="rf", metric=metric, trControl=control)
+set.seed(100)
+gbm.model <- train(diabetes~., data=train.data, method="gbm", metric=metric, trControl=control)
+
+results <- resamples(list(nb=nb.model, 
+                          lda=lda.model, 
+                          cart=cart.model, 
+                          knn=knn.model, 
+                          svm=svm.model, 
+                          rf=rf.model,
+                          gbm=gbm.model))
+
+summary(results)
+
+# generate boxplots of results
+bwplot(results)
+
+# difference in model predictions
+diffs <- diff(results)
+
+# summarize p-values for pairwise comparisons
+summary(diffs)
+
+# compare models
+compare_models(knn.model, svm.model, metric="Accuracy")
+
+# Feature analysis using featurePlot() - visually examine how the 
+# predictors influence the Outcome 
+# See: https://www.machinelearningplus.com/machine-learning/caret-package/
+
+#featurePlot(x = train.data[, 1:8], 
+#            y = train.data$diabetes, 
+#            plot = "box", # change to density
+#            strip=strip.custom(par.strip.text=list(cex=.7)),
+#            scales = list(x = list(relation="free"), 
+#                          y = list(relation="free")))
+
+# Make predictions, e.g. with knn
+svm.predictions <- predict(svm.model, test.data)
+confusionMatrix(svm.predictions, test.data$diabetes, positive = "pos")
+
+
+# **************************************************************#
+# Classification using decision trees
+# **************************************************************#
+
+install.packages("rpart")
+library(rpart)
+
+# Do this to allow for reproducibility
+set.seed(123)
+
+# Build the decision tree
+rpart.model <- rpart(diabetes~., data=train.data, method="class")
+
+# Plot the decision tree
+par(xpd=NA)
+plot(rpart.model, main="Classification Tree for diabetes (training data)")
+text(rpart.model, digits=2, cex=0.6)
+
+# Another way of plotting the model
+print(rpart.model, digits=2)
+
+# Plot a fancier decision tree using rattle
+# https://www.hranalytics101.com/extended-tutorial-how-to-predict-employee-turnover/
+install.packages("rattle")
+library(rattle)
+
+par(xpd=NA)
+fancyRpartPlot(rpart.model, sub = NULL, main = "Basic Decision Tree")
+
+# Make predictions
+rpart.predictions <- rpart.model %>% predict(test.data, type="class")
+mean(rpart.predictions == test.data$diabetes)
+
+# Can also output probabilities of each case being assigned to pos and neg classes
+rpart.predictions<-rpart.model %>% predict(test.data, type="class")
+
+# Could do this instead
+# print(caret::confusionMatrix(data = rpart.predictions,  
+#                             reference = test.data$diabetes,
+#                             positive = 'pos'))
+
+
+# **************************************************************#
+# Random Forest example
+# **************************************************************#
+
+install.packages("randomForest")
+library(randomForest)
+
+set.seed(123)
+
+#  Build the model
+rf.model <- randomForest(diabetes ~ ., ntree = 100, data = train.data)
+
+print(rf.model)
+
+# Look at the importance of variables
+varImpPlot(rf.model,  
+           sort = T,
+           n.var=10,
+           main="Top 10 - Variable Importance")
+
+rf.predictions <- predict(rf.model, train.data)
+
+# Create Confusion Matrix
+print(caret::confusionMatrix(data = rf.predictions,  
+                             reference = train.data$diabetes,
+                             positive = 'pos'))
+
+rf.predictions <- predict(rf.model, test.data)
+
+# Create Confusion Matrix
+print(caret::confusionMatrix(data = rf.predictions,  
+                             reference = test.data$diabetes,
+                             positive = 'pos'))
+
+rf.model2 <- randomForest(diabetes ~ glucose+insulin, ntree = 100, data = train.data)
+rf.predictions2 <- predict(rf.model2, test.data)
+
+print(caret::confusionMatrix(data = rf.predictions2,  
+                             reference = test.data$diabetes,
+                             positive = 'pos'))
+
+
+# **************************************************************#
+# Example - classifying edible mushrooms
+# **************************************************************#
+# https://archive.ics.uci.edu/ml/datasets/Mushroom
+# https://www.kaggle.com/uciml/mushroom-classification
+# https://www.r-bloggers.com/random-forest-classification-of-mushrooms/
+# https://rpubs.com/arun_infy13/93236
+
+mushroom.data <- read.csv("Data/mushrooms.csv", head=TRUE, stringsAsFactors=TRUE)
+mushroom.data<-mushroom.data[,-1]
+head(mushroom.data)
+View(mushroom.data)
+anyNA(mushroom.data)
+
+# Could also run the missmap function to check
+missmap(mushroom.data)
+
+summary(mushroom.data)
+
+# Check the data types
+# library(tidyverse)
+mushroom.data %>% map_chr(class)
+
+library(caret)
+
+set.seed(123)
+mushroom.data.split <- mushroom.data$class %>%
+  createDataPartition(p=0.8, list=FALSE)
+
+mushroom.train.data <- mushroom.data[mushroom.data.split, ]
+mushroom.test.data <- mushroom.data[-mushroom.data.split, ]
+
+print(table(mushroom.train.data$class))
+print(table(mushroom.test.data$class))
+
+# library(randomForest)  
+mushroom.rf.model = randomForest(class~., ntree = 100, data = mushroom.train.data)
+
+# Variable Importance
+varImpPlot(mushroom.rf.model,  
+           sort = T,
+           n.var=10,
+           main="Top 10 - Variable Importance")
+
+# Build model
+mushroom.rf.predictions = predict(mushroom.rf.model, mushroom.test.data)
+
+# Create Confusion Matrix
+print(caret::confusionMatrix(data = mushroom.rf.predictions,  
+                             reference = mushroom.test.data$class))
+
+
+# **************************************************************#
+# Example - regression using random forest
+# **************************************************************#
+
+# Goal: to predict target (median house price value) given multiple predictors
+# https://medium.com/@haydar_ai/learning-data-science-day-9-linear-regression-on-boston-housing-dataset-cd62a80775ef
+# Number of instances: 506
+# Number of attributes: 13 numeric/categorical predictive
+# Target: median house price value (MEDV) normally used as target variable
+
+install.packages("MASS")
+library(MASS)
+
+View(Boston)
+
+# Gain a summary of the Boston dataset
+summary(Boston)
+ggpairs(Boston)
+
+# Quick check on the variable types in R
+str(Boston)
+
+# Check for missing values (NA's)
+missmap(Boston)
+anyNA(Boston)
+
+library(caret)
+
+set.seed(123)
+
+boston.data.split <- Boston$medv %>%
+  createDataPartition(p=0.8, list=FALSE)
+
+boston.train.data <- Boston[boston.data.split, ]
+boston.test.data <- Boston[-boston.data.split, ]
+
+control <- trainControl(method="cv", number=10)
+
+rf.reg.model <- train(medv~., data=boston.train.data, method="rf", trControl=control)
+
+rf.reg.predictions <- predict(rf.reg.model, boston.test.data)
+head(rf.reg.predictions)
+
+x <- cbind(boston.test.data, rf.reg.predictions)
+head(x)
+
+RMSE(rf.reg.predictions, boston.test.data$medv)
+
+RMSE.forest <- sqrt(mean((rf.reg.predictions-boston.test.data$medv)^2))
+RMSE.forest
+
+MAE.forest <- mean(abs(rf.reg.predictions-boston.test.data$medv))
+MAE.forest
+
+# Fit a regression line to the actual vs. predicted points
+ggplotRegression <- function (fit) {
+  
+  require(ggplot2)
+  
+  ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+    geom_point(alpha = 0.7) +
+    geom_abline(intercept=0, slope=1) +
+    stat_smooth(method = "lm", col = "red") +
+    labs(title = paste("Adj R2 = ",signif(summary(fit)$adj.r.squared, 5),
+                       "Intercept =",signif(fit$coef[[1]],5 ),
+                       " Slope =",signif(fit$coef[[2]], 5),
+                       " P =",signif(summary(fit)$coef[2,4], 5))) +
+    xlab("Actual") +
+    ylab("Predicted")
+}
+
+results <- data.frame(actual=boston.test.data$medv, rf_predictions=rf.reg.predictions)
+absline <- lm(results$actual ~ results$rf_predictions, data = results)
+
+dev.off() # may need to run this
+ggplotRegression(absline)
+
+# Check out using log of target variable
+rf.reg.model <- train(log(medv)~., data=boston.train.data, method="rf", trControl=control)
+
+boston.test.data$medv <- log(boston.test.data$medv)
+
+rf.reg.predictions <- predict(rf.reg.model, boston.test.data)
+
+x <- cbind(boston.test.data, rf.reg.predictions)
+
+RMSE(rf.reg.predictions, boston.test.data$medv)
+
+exp(0.1597977)
+#10^0.1597977
+
+results <- data.frame(actual=boston.test.data$medv, rf_predictions=rf.reg.predictions)
+absline <- lm(results$actual ~ results$rf_predictions, data = results)
+dev.off() # may need to run this
+ggplotRegression(absline)
+
+
+# ----------------------------------------------------------------------
+# Feature selection using RFE
+# ----------------------------------------------------------------------
+
+library(mlbench)
+
+# define the control using a random forest selection function - takes a while
+rfe.control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+
+# run the RFE algorithm
+results <- rfe(boston.train.data[, 1:13], boston.train.data[, 14], sizes=c(1:14), rfeControl=rfe.control)
+
+# summarize the results
+print(results)
+
+# list the chosen features
+predictors(results)
+
+# plot the results
+plot(results, type=c("g", "o"))
+
+# Take top 5 predictors
+predictors <- c("rm", "lstat", "nox", "dis", "crim", "medv")
+
+rf.reg.model.2 <- train(medv~., data=boston.train.data[,predictors], method="rf", trControl=control)
+
+rf.reg.predictions.2 <- predict(rf.reg.model.2, boston.test.data)
+head(rf.reg.predictions.2)
+
+RMSE(rf.reg.predictions.2, boston.test.data$medv)
