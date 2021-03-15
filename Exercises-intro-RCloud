@@ -1,0 +1,13 @@
+#Read the data
+vehicle <- read.csv('vehicle.csv', header = T)
+str(vehicle)
+
+#make an histogram
+hist(vehicle$lc,
+  col = 'pink',
+  main = 'Histogram for Labor Cost',
+  xlab = 'labor cost in £')
+
+#install psych package
+library(psych)
+pairs.panels(vehicle[,c(2:6)])
